@@ -16,12 +16,14 @@ import kg.mlsp.staffcontrol.repository.OrganizationRepository;
 import kg.mlsp.staffcontrol.repository.PositionRepository;
 import kg.mlsp.staffcontrol.repository.StaffRepository;
 import kg.mlsp.staffcontrol.repository.UserRepository;
+import kg.mlsp.staffcontrol.spec.UserSpec;
 import kg.mlsp.staffcontrol.util.PasswordValidator;
 import kg.mlsp.staffcontrol.util.SecurityUtils;
 import kg.mlsp.staffcontrol.validation.UserValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -40,57 +42,17 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
     private final UserValidator userValidator;
     private final LoggingService loggingService;
+    private final UserSpec userSpec;
 
     @Transactional(readOnly = true)
     public Page<UserDto> getAll(Pageable pageable) {
-        // Проверяем, есть ли сортировка по полям Staff
-        if (pageable.getSort().isSorted()) {
-            return getSortedUsers(pageable);
-        }
         return userRepository.findAll(pageable).map(userMapper::toDto);
     }
 
     @Transactional(readOnly = true)
     public Page<UserDto> searchUsers(UserSearchDto searchDto, Pageable pageable) {
-        // Проверяем, есть ли текстовые критерии поиска
-        boolean hasTextCriteria = (searchDto.getFirstName() != null && !searchDto.getFirstName().isEmpty()) ||
-                                 (searchDto.getLastName() != null && !searchDto.getLastName().isEmpty()) ||
-                                 (searchDto.getMiddleName() != null && !searchDto.getMiddleName().isEmpty()) ||
-                                 (searchDto.getPhone() != null && !searchDto.getPhone().isEmpty()) ||
-                                 (searchDto.getPin() != null && !searchDto.getPin().isEmpty());
-
-        // Проверяем, есть ли критерии по датам
-        boolean hasDateCriteria = searchDto.getCreatedAtFrom() != null ||
-                                 searchDto.getUpdatedAtTo() != null ||
-                                 searchDto.getUpdatedAtFrom() != null ||
-                                 searchDto.getUpdatedAtTo() != null;
-
-        if (hasTextCriteria && hasDateCriteria) {
-            // Если есть и текстовые, и дата критерии, используем базовый поиск
-            return userRepository.findAll(pageable).map(userMapper::toDto);
-        } else if (hasTextCriteria) {
-            // Только текстовый поиск
-            return userRepository.findByTextCriteria(
-                    searchDto.getFirstName(),
-                    searchDto.getLastName(),
-                    searchDto.getMiddleName(),
-                    searchDto.getPhone(),
-                    searchDto.getPin(),
-                    pageable
-            ).map(userMapper::toDto);
-        } else if (hasDateCriteria) {
-            // Только поиск по датам
-            return userRepository.findByDateCriteria(
-                    searchDto.getCreatedAtFrom(),
-                    searchDto.getUpdatedAtTo(),
-                    searchDto.getUpdatedAtFrom(),
-                    searchDto.getUpdatedAtTo(),
-                    pageable
-            ).map(userMapper::toDto);
-        } else {
-            // Нет критериев - возвращаем все
-            return userRepository.findAll(pageable).map(userMapper::toDto);
-        }
+        Specification<User> spec = userSpec.getSpec(searchDto);
+        return userRepository.findAll(spec, pageable).map(userMapper::toDto);
     }
 
     @Transactional(readOnly = true)
@@ -251,37 +213,6 @@ public class UserServiceImpl implements UserService {
         user = userRepository.save(user);
         
         return userMapper.toDto(user);
-    }
-
-    private Page<UserDto> getSortedUsers(Pageable pageable) {
-        // Получаем первую сортировку (если есть несколько)
-        var sort = pageable.getSort().get().findFirst();
-        
-        if (sort.isPresent()) {
-            String property = sort.get().getProperty();
-            boolean isAscending = sort.get().getDirection().isAscending();
-            
-            return switch (property) {
-                case "staff.firstName" -> isAscending ? 
-                    userRepository.findAllOrderByStaffFirstNameAsc(pageable).map(userMapper::toDto) :
-                    userRepository.findAllOrderByStaffFirstNameDesc(pageable).map(userMapper::toDto);
-                case "staff.lastName" -> isAscending ? 
-                    userRepository.findAllOrderByStaffLastNameAsc(pageable).map(userMapper::toDto) :
-                    userRepository.findAllOrderByStaffLastNameDesc(pageable).map(userMapper::toDto);
-                case "staff.middleName" -> isAscending ? 
-                    userRepository.findAllOrderByStaffMiddleNameAsc(pageable).map(userMapper::toDto) :
-                    userRepository.findAllOrderByStaffMiddleNameDesc(pageable).map(userMapper::toDto);
-                case "staff.phone" -> isAscending ? 
-                    userRepository.findAllOrderByStaffPhoneAsc(pageable).map(userMapper::toDto) :
-                    userRepository.findAllOrderByStaffPhoneDesc(pageable).map(userMapper::toDto);
-                case "staff.pin" -> isAscending ? 
-                    userRepository.findAllOrderByStaffPinAsc(pageable).map(userMapper::toDto) :
-                    userRepository.findAllOrderByStaffPinDesc(pageable).map(userMapper::toDto);
-                default -> userRepository.findAll(pageable).map(userMapper::toDto);
-            };
-        }
-        
-        return userRepository.findAll(pageable).map(userMapper::toDto);
     }
 
 }

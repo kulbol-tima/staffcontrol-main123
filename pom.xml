@@ -69,6 +69,13 @@
 			<version>42.7.3</version>
 		</dependency>
 
+		<!-- H2 Database for tests -->
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>test</scope>
+		</dependency>
+
 		<!-- Lombok (Optional but recommended) -->
 		<dependency>
 			<groupId>org.projectlombok</groupId>
