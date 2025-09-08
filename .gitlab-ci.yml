@@ -1,0 +1,50 @@
+stages:
+  - build
+  - docker
+  - deploy
+
+variables:
+  MAVEN_CLI_OPTS: "--batch-mode"
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_DRIVER: overlay2
+
+cache:
+  paths:
+    - .m2/repository
+
+build-app:
+  stage: build
+  image: maven:3.9.4-eclipse-temurin-21
+  script:
+    - mvn $MAVEN_CLI_OPTS clean package -DskipTests
+  artifacts:
+    paths:
+      - target/*.jar
+
+build-docker:
+  stage: docker
+  image: docker:24.0.5
+  services:
+    - docker:dind
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE:latest .
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+    - docker push $CI_REGISTRY_IMAGE:latest
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  only:
+    - main
+  before_script:
+    - apk add --no-cache openssh
+  script:
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "
+      cd $PROJECT_DIR &&
+      git pull &&
+      docker-compose down &&
+      docker-compose up -d --build
+      "
